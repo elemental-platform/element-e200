@@ -1,7 +1,7 @@
-// Elemental E200 v1.0.4 firmware
+// Elemental E200 v1.1 firmware
 
 // Developed by AKstudios
-// Updated: 06/13/2019
+// Updated: 12/22/2019
 
 #include <RFM69.h>  //  https://github.com/LowPowerLab/RFM69
 #include <SPI.h>
@@ -11,8 +11,7 @@
 #include <avr/wdt.h>
 
 // define node parameters
-//#define NODEID              212
-uint16_t NODEID =             212; // same as above, but supports 10bit addresses (up to 1023 node IDs)
+#define NODEID              212   //supports 10-bit addresses (up to 1023 node IDs)
 #define NETWORKID           210
 #define ROOM_GATEWAYID      210
 #define GATEWAYID           1
@@ -22,7 +21,6 @@ uint16_t NODEID =             212; // same as above, but supports 10bit addresse
 #define IS_RFM69HW          //uncomment only for RFM69HW! Leave out if you have RFM69W!
 #define LED                 9 // led pin
 #define POWER               4
-//#define targetRSSI    -80
 
 // define objects
 RFM69 radio;
@@ -55,7 +53,6 @@ void setup()
   radio.setHighPower(); //uncomment only for RFM69HW!
 #endif
   radio.encrypt(ENCRYPTKEY);
-  //radio.enableAutoPower(targetRSSI);
 
   fadeLED();
 }
@@ -156,13 +153,7 @@ void sendData()
   radio.setNetwork(NETWORKID);
 
   memset(dataPacket, 0, sizeof dataPacket);   // clear array
-  //_dataPacket[0] = (char)0;
-
-  digitalWrite(LED, HIGH);
-  delay(5);
-  digitalWrite(LED, LOW);
-  //fadeLED();
-  
+  blinkLED(LED);
 }
 
 
@@ -182,26 +173,22 @@ void readSensors()
   
 
   // define character arrays for all variables
-  char _i[3];
   char _m[3];
   char _b[5];
   
   // convert all flaoting point and integer variables into character arrays
-  dtostrf(NODEID, 1, 0, _i);
   dtostrf(state, 1, 0, _m);  // this function converts float into char array. 3 is minimum width, 2 is decimal precision
   dtostrf(batt, 4, 2, _b);
-  delay(10);
+  delay(1);
   
   dataPacket[0] = 0;  // first value of dataPacket should be a 0
   
   // create datapacket by combining all character arrays into a large character array
-  strcat(dataPacket, "i:");
-  strcat(dataPacket, _i);
-  strcat(dataPacket, ",m:");
+  strcat(dataPacket, "m:");
   strcat(dataPacket, _m);
   strcat(dataPacket, ",b:");
   strcat(dataPacket, _b);
-  delay(10);
+  delay(1);
 }
 
 
@@ -226,6 +213,16 @@ float averageADC(int pin)
 }
 
 
+// blink LED *****************************************
+void blinkLED(int pin)
+{
+  digitalWrite(pin, HIGH);
+  delay(5);
+  digitalWrite(pin, LOW);
+}
+
+
+// Fade LED *****************************************
 void fadeLED()
 {
   int brightness = 0;
