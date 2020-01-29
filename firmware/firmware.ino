@@ -1,7 +1,11 @@
-// Elemental E200 v1.1 firmware
+//*****************************************************************************************************************************
+// Elemental E200 v1.2 firmware
 
 // Developed by AKstudios
-// Updated: 12/22/2019
+// Updated: 01/29/2020
+
+//*****************************************************************************************************************************
+// libraries in use
 
 #include <RFM69.h>  //  https://github.com/LowPowerLab/RFM69
 #include <SPI.h>
@@ -10,36 +14,41 @@
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 
-// define node parameters
+//*****************************************************************************************************************************
+// configurable global variables - define node parameters
+
 #define NODEID              212   //supports 10-bit addresses (up to 1023 node IDs)
 #define NETWORKID           210
 #define ROOM_GATEWAYID      210
 #define GATEWAYID           1
 #define GATEWAY_NETWORKID   1
 #define FREQUENCY           RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY          "Tt-Mh=SQ#dn#JY3_" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY          "RgUjXn2r5u8x/A?D" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define FREQUENCY_EXACT     905000000   // change the frequency in areas of interference (default: 915MHz)
 #define IS_RFM69HW          //uncomment only for RFM69HW! Leave out if you have RFM69W!
 #define LED                 9 // led pin
 #define POWER               4
 
-// define objects
+// other global objects and variables
 RFM69 radio;
-
-// define other global variables
 char dataPacket[150], _dataPacket[150];
 int state, wake_interval = 0;
 
-// ISR 
-ISR(PCINT0_vect)  // Interrupt Service Routine for PCINT0 vector (pin 8)
+//*****************************************************************************************************************************
+// Interrupt Service Routines (ISR)
+
+ISR(PCINT0_vect)  // ISR for PCINT0 vector (pin 8)
 {
   PCMSK0 = 0x00;   // Disable all PCInt Interrupts
   //asm("nop");  // do nothing
 }
 
-ISR(WDT_vect)  // Interrupt Service Routine for WatchDog Timer
+ISR(WDT_vect)  // ISR for WatchDog Timer
 {
   wdt_disable();  // disable watchdog
 }
+
+//*****************************************************************************************************************************
 
 void setup()
 {
@@ -49,14 +58,19 @@ void setup()
   pinMode(LED, OUTPUT);  // pin 9 controls LED
   
   radio.initialize(FREQUENCY,NODEID,NETWORKID);
+  radio.encrypt(ENCRYPTKEY);
 #ifdef IS_RFM69HW
   radio.setHighPower(); //uncomment only for RFM69HW!
 #endif
-  radio.encrypt(ENCRYPTKEY);
+#ifdef FREQUENCY_EXACT
+  radio.setFrequency(FREQUENCY_EXACT); //set frequency to some custom frequency
+#endif
 
-  fadeLED();
+  fadeLED(LED);
 }
 
+//*****************************************************************************************************************************
+// this function puts the node to sleep with pin change interrupt enabled
 
 void PCINT_sleep()
 {
@@ -91,6 +105,9 @@ void PCINT_sleep()
   delay(1);
 }
 
+//*****************************************************************************************************************************
+// this function puts the node to sleep with watch dog timer enabled
+
 void WDT_sleep()
 {
   Serial.flush(); // empty the send buffer, before continue with; going to sleep
@@ -123,6 +140,7 @@ void WDT_sleep()
   delay(1);
 }
 
+//*****************************************************************************************************************************
 
 void loop() 
 {
@@ -141,6 +159,9 @@ void loop()
   }
 }
 
+//*****************************************************************************************************************************
+// this function sends data
+
 void sendData()
 {
   //checkPin(); // read current state of PIR. 1 = movement detected, 0 = no movement.
@@ -149,13 +170,15 @@ void sendData()
   radio.sendWithRetry(ROOM_GATEWAYID, dataPacket, strlen(dataPacket));  // send data
   WDT_sleep();   // sleep 8 seconds before sending data to main gateway
   radio.setNetwork(GATEWAY_NETWORKID);
-  radio.sendWithRetry(GATEWAYID, dataPacket, strlen(dataPacket));
+  radio.send(GATEWAYID, dataPacket, strlen(dataPacket));
   radio.setNetwork(NETWORKID);
 
   memset(dataPacket, 0, sizeof dataPacket);   // clear array
-  blinkLED(LED);
+  blinkLED(LED, 3);
 }
 
+//*****************************************************************************************************************************
+// This function reads all sensors and creates a datapacket to transmit
 
 void readSensors()
 {  
@@ -171,7 +194,6 @@ void readSensors()
   float adc_a7 = avg / 5.0;
   float batt = (adc_a7/1023) * 2 * 3.3;
   
-
   // define character arrays for all variables
   char _m[3];
   char _b[5];
@@ -191,45 +213,23 @@ void readSensors()
   delay(1);
 }
 
-
+//*****************************************************************************************************************************
+// This function checks the state of the pin
 
 void checkPin()
 {
   state = digitalRead(8); // read current state of PIR. 1 = movement detected, 0 = no movement.
 }
+//*****************************************************************************************************************************
+// Fade LED
 
-
-
-// Averaging ADC values to counter noise in readings  *********************************************
-float averageADC(int pin)
-{
-  float sum=0.0;
-  for(int i=0;i<5;i++)
-  {
-     sum = sum + analogRead(pin);
-  }
-  float average = sum/5.0;
-  return average;
-}
-
-
-// blink LED *****************************************
-void blinkLED(int pin)
-{
-  digitalWrite(pin, HIGH);
-  delay(5);
-  digitalWrite(pin, LOW);
-}
-
-
-// Fade LED *****************************************
-void fadeLED()
+void fadeLED(int pin)
 {
   int brightness = 0;
   int fadeAmount = 5;
   for(int i=0; i<510; i=i+5)  // 255 is max analog value, 255 * 2 = 510
   {
-    analogWrite(LED, brightness);  // pin 9 is LED
+    analogWrite(pin, brightness);  // pin 9 is LED
   
     // change the brightness for next time through the loop:
     brightness = brightness + fadeAmount;  // increment brightness level by 5 each time (0 is lowest, 255 is highest)
@@ -242,7 +242,18 @@ void fadeLED()
     // wait for 20-30 milliseconds to see the dimming effect
     delay(10);
   }
-  digitalWrite(LED, LOW); // switch LED off at the end of fade
+  digitalWrite(pin, LOW); // switch LED off at the end of fade
 }
 
+//*****************************************************************************************************************************
+// blink LED
+
+void blinkLED(int pin, int blinkDelay)
+{
+  digitalWrite(pin, HIGH);
+  delay(blinkDelay);
+  digitalWrite(pin, LOW);
+}
+
+//*****************************************************************************************************************************
 // bruh
