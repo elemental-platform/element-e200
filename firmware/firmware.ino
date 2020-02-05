@@ -1,8 +1,8 @@
 //*****************************************************************************************************************************
-// Elemental E200 v1.2 firmware
+// Elemental E200 v1.3 firmware
 
 // Developed by AKstudios
-// Updated: 01/29/2020
+// Updated: 02/04/2020
 
 //*****************************************************************************************************************************
 // libraries in use
@@ -19,7 +19,7 @@
 
 #define NODEID              212   //supports 10-bit addresses (up to 1023 node IDs)
 #define NETWORKID           210
-#define ROOM_GATEWAYID      210
+#define CONTROLNODE_ID      210
 #define GATEWAYID           1
 #define GATEWAY_NETWORKID   1
 #define FREQUENCY           RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
@@ -28,6 +28,7 @@
 #define IS_RFM69HW          //uncomment only for RFM69HW! Leave out if you have RFM69W!
 #define LED                 9 // led pin
 #define POWER               4
+#define HAS_CONTROL_NODE    //uncomment only if a control node is present
 
 // other global objects and variables
 RFM69 radio;
@@ -57,7 +58,7 @@ void setup()
   pinMode(POWER, OUTPUT);
   pinMode(LED, OUTPUT);  // pin 9 controls LED
   
-  radio.initialize(FREQUENCY,NODEID,NETWORKID);
+  radio.initialize(FREQUENCY,NODEID,GATEWAY_NETWORKID);
   radio.encrypt(ENCRYPTKEY);
 #ifdef IS_RFM69HW
   radio.setHighPower(); //uncomment only for RFM69HW!
@@ -77,7 +78,7 @@ void PCINT_sleep()
   Serial.flush(); // empty the send buffer, before continue with; going to sleep
   radio.sleep();
   digitalWrite(POWER, LOW);
-  delay(1);
+  delayMicroseconds(100);
   
   cli();          // stop interrupts
   //DDRB |= ~(1<<DDB0); // set pin D8 as INPUT
@@ -102,7 +103,7 @@ void PCINT_sleep()
   sei();  // enable global interrupts  
 
   ADCSRA = _ADCSRA; // restore ADC state (enable ADC)
-  delay(1);
+  //delay(1);
 }
 
 //*****************************************************************************************************************************
@@ -113,7 +114,7 @@ void WDT_sleep()
   Serial.flush(); // empty the send buffer, before continue with; going to sleep
   radio.sleep();
   digitalWrite(POWER, LOW);
-  delay(1);
+  delayMicroseconds(100);
   
   cli();          // stop interrupts
   MCUSR = 0;
@@ -137,7 +138,7 @@ void WDT_sleep()
   sei();  
 
   ADCSRA = _ADCSRA; // restore ADC state (enable ADC)
-  delay(1);
+  //delay(1);
 }
 
 //*****************************************************************************************************************************
@@ -166,12 +167,15 @@ void sendData()
 {
   //checkPin(); // read current state of PIR. 1 = movement detected, 0 = no movement.
   readSensors();
-// send datapacket
-  radio.sendWithRetry(ROOM_GATEWAYID, dataPacket, strlen(dataPacket));  // send data
-  WDT_sleep();   // sleep 8 seconds before sending data to main gateway
-  radio.setNetwork(GATEWAY_NETWORKID);
+  
+  // send datapacket
   radio.send(GATEWAYID, dataPacket, strlen(dataPacket));
+#ifdef HAS_CONTROL_NODE
+  WDT_sleep();   // sleep 8 seconds before sending data to main gateway
   radio.setNetwork(NETWORKID);
+  radio.sendWithRetry(CONTROLNODE_ID, dataPacket, strlen(dataPacket));  // send data
+  radio.setNetwork(GATEWAY_NETWORKID);
+#endif
 
   memset(dataPacket, 0, sizeof dataPacket);   // clear array
   blinkLED(LED, 3);
@@ -183,7 +187,7 @@ void sendData()
 void readSensors()
 {  
   digitalWrite(POWER, HIGH);
-  delay(1);
+  delayMicroseconds(200);
   
   // read battery level
   float avg=0.0;
@@ -201,7 +205,7 @@ void readSensors()
   // convert all flaoting point and integer variables into character arrays
   dtostrf(state, 1, 0, _m);  // this function converts float into char array. 3 is minimum width, 2 is decimal precision
   dtostrf(batt, 4, 2, _b);
-  delay(1);
+  //delay(1);
   
   dataPacket[0] = 0;  // first value of dataPacket should be a 0
   
